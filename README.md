@@ -211,10 +211,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Stable-Baselines3 Documentation](https://stable-baselines3.readthedocs.io/)
 - [Gymnasium Documentation](https://gymnasium.farama.org/)
 
-## 📧 Contact
 
-Questions or suggestions? Feel free to open an issue or submit a pull request!
-
----
-
-⭐ **If you find this project helpful, please consider giving it a star!** ⭐
