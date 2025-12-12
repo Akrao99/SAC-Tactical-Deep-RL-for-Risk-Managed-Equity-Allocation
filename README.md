@@ -1,214 +1,298 @@
-# 🤖 Risk Regulated PPO Agent for Regime Adaptive SPY Trading
+# 🤖 SPY/SH Tactical Allocation with Deep Reinforcement Learning
 
-A Reinforcement Learning trading agent that learns to trade the S&P 500 (SPY) using Proximal Policy Optimization (PPO). The agent is trained to protect capital during bear markets while maintaining positive returns across different market conditions.
+A risk-managed equity trading system using Soft Actor-Critic (SAC) reinforcement learning to dynamically allocate between SPY (S&P 500 ETF) and SH (Inverse S&P 500 ETF).
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## 📊 Performance Summary
+## 📊 Results Summary
 
-| Period | Agent Return | Buy & Hold | Outperformance | Max Drawdown |
-|--------|--------------|------------|----------------|--------------|
-| **2022 Validation** (Bear Market) | +5.63% | -18.65% | +24.28% | 6.41% |
-| **2023-2024 Test** (Bull Market) | +10.06% | +58.82% | -48.76% | 5.06% |
+### Out-of-Sample Performance (2022-2025)
 
-### Key Metrics
-- **Sharpe Ratio**: 0.604 (validation), 0.972 (test)
-- **Sortino Ratio**: 0.817 (validation), 1.241 (test)
-- **Trading Activity**: 35 trades (validation), 82 trades (test)
-- **Risk Control**: Maximum drawdown stayed below 7% in both periods
+| Year | Agent | Buy & Hold | Alpha | Sharpe | Max Drawdown |
+|------|-------|------------|-------|--------|--------------|
+| **2022** (Bear) | -12.63% | -18.65% | **+6.02%** ✅ | -1.16 | 14.09% |
+| **2023** (Bull) | +16.03% | +26.71% | -10.68% | 1.74 | 7.02% |
+| **2024** (Bull) | +15.59% | +25.59% | -10.00% | 1.74 | 7.03% |
+| **2025** (YTD) | +6.46% | +17.85% | -11.39% | 0.69 | 12.68% |
 
-## 🎯 What Makes This Special?
+**Key Insight:** Strategy prioritizes capital preservation, reducing drawdowns by ~30% during bear markets while maintaining positive risk-adjusted returns (Sharpe 1.7+) in bull markets.
 
-This agent demonstrates **defensive trading**—it sacrifices bull market gains for downside protection:
-- ✅ **Protected capital** during 2022 bear market (+5.6% vs -18.7% B&H)
-- ✅ **Controlled risk** with max drawdowns under 7%
-- ✅ **Consistent performance** with strong risk-adjusted returns
-- ⚠️ **Conservative** approach underperforms in strong bull markets
+### Equity Curves
+
+<p align="center">
+  <img src="charts/7_oos_combined.png" alt="OOS Performance" width="800"/>
+</p>
+
+## 🎯 Project Objectives
+
+1. **Risk Management First:** Protect capital during market downturns
+2. **Adaptive Positioning:** Learn to scale exposure based on market regime
+3. **Proper Validation:** Walk-forward cross-validation with purged data splits
+4. **Reproducibility:** Clean, documented, modular codebase
 
 ## 🏗️ Architecture
 
-### Reinforcement Learning Setup
-- **Algorithm**: Proximal Policy Optimization (PPO)
-- **Framework**: Stable-Baselines3 + Gymnasium
-- **Training Data**: 2014-2021 (1,927 trading days)
-- **Validation**: 2022 (251 trading days)
-- **Test**: 2023-2024 (501 trading days)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    OBSERVATION SPACE                        │
+│  [10-day window × 8 features] + [exposure, cash_ratio]     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      SAC AGENT                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │   Actor     │  │  Critic 1   │  │  Critic 2   │        │
+│  │ [256, 256]  │  │ [256, 256]  │  │ [256, 256]  │        │
+│  └─────────────┘  └─────────────┘  └─────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    ACTION SPACE                             │
+│         Continuous [-1.0, 2.0] exposure target             │
+│         -1.0 = 100% SH | 0 = Cash | 2.0 = 200% SPY        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 RISK MANAGEMENT LAYERS                      │
+│  1. VIX Regime Caps (5 levels: 15/20/25/35)               │
+│  2. Trend Weight (MA50/MA200 scaling)                      │
+│  3. Stop Loss (12%) + Trailing Stop (13%)                  │
+│  4. Circuit Breaker (25% portfolio drawdown)               │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Market Features (8 total)
-The agent observes these features to make decisions:
+## 📈 Features
 
-1. **Efficiency Ratio (10-day)** - Short-term trend strength
-2. **Efficiency Ratio (30-day)** - Long-term trend strength  
-3. **Hurst Exponent** - Trending vs. mean-reverting detection
-4. **Shannon Entropy** - Market uncertainty measurement
-5. **Risk-Adjusted Momentum** - Momentum relative to volatility
-6. **VIX** - Fear/volatility index
-7. **Exposure** - Current position size
-8. **Cash Ratio** - Available capital
+### Market Features (8 indicators)
 
-### Action Space
-- **0**: HOLD (do nothing)
-- **1**: BUY (enter long position)
-- **2**: SELL (exit position)
+| Feature | Type | Description |
+|---------|------|-------------|
+| `rsi_14_z` | Fast | RSI(14) Z-score - Oversold/overbought detection |
+| `macd_hist_z` | Fast | MACD Histogram Z-score - Momentum shifts |
+| `bb_pct_z` | Fast | Bollinger %B Z-score - Price vs bands |
+| `atr_14_z` | Fast | ATR(14) Z-score - Volatility regime |
+| `er_10_z` | Medium | Efficiency Ratio - Trend strength |
+| `ram_20_z` | Medium | Risk-adjusted momentum |
+| `vix_z` | Slow | VIX Z-score - Market fear |
+| `ycs_z` | Slow | Yield curve spread - Macro regime |
 
-### Risk Management
-The environment enforces these rules automatically:
-- **Stop Loss**: Sell if position drops 5%
-- **Trailing Stop**: Sell if price drops 7% from peak
-- **Circuit Breaker**: Stop trading if portfolio drops 15%
-- **Position Limit**: Maximum 50% of portfolio per trade
-- **Transaction Cost**: 0.01% per trade
+### Reward Function: Differential Sharpe Ratio
+
+Based on [Moody & Saffell (2001)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=268935), provides smooth gradient signal:
+
+```python
+def _compute_reward(self, daily_ret):
+    """Differential Sharpe Ratio - recursive, no windowing noise."""
+    eta = 0.04  # ~25-day effective window
+    
+    delta_A = daily_ret - self._A
+    delta_B = daily_ret**2 - self._B
+    
+    self._A += eta * delta_A
+    self._B += eta * delta_B
+    
+    variance = self._B - self._A**2
+    dsr = (self._B * delta_A - 0.5 * self._A * delta_B) / (variance**1.5 + 1e-8)
+    
+    return np.clip(dsr * 10, -5.0, 5.0)
+```
+
+## 🔬 Methodology
+
+### Walk-Forward Cross-Validation
+
+```
+Fold 1: Train [2010-2016] → Validate [2017-2018]
+Fold 2: Train [2010-2018] → Validate [2019-2020]
+Fold 3: Train [2012-2018] → Validate [2019-2020]
+Fold 4: Train [2012-2020] → Validate [2021]
+Fold 5: Train [2014-2020] → Validate [2021]
+
+Final:  Train [2010-2021] → OOS Test [2022-2025]
+```
+
+- **Purge Gap:** 10 days between train/validation to prevent leakage
+- **Expanding Window:** Each fold uses more historical data
+- **True OOS:** 2022-2025 data never seen during development
+
+### VIX Regime Management
+
+| VIX Level | Max Position | Stop Loss | Trailing Stop |
+|-----------|--------------|-----------|---------------|
+| < 15 | 175% | 9.6% | 10.4% |
+| 15-20 | 140% | 10.8% | 11.7% |
+| 20-25 | 100% | 12.0% | 13.0% |
+| 25-35 | 50% | 15.6% | 15.6% |
+| > 35 | 25% | 18.0% | 16.9% |
 
 ## 🚀 Quick Start
 
-### Prerequisites
-```bash
-Python 3.8+
-GPU recommended (training takes ~1 hour on A100, longer on CPU)
-```
-
 ### Installation
+
 ```bash
-pip install stable-baselines3[extra] gymnasium optuna yfinance
+git clone https://github.com/yourusername/spy-rl-trading.git
+cd spy-rl-trading
+pip install -r requirements.txt
 ```
 
-### Run the Notebook
-1. Open `SPY_PPO_Trading_Agent_CLEAN.ipynb` in Google Colab or Jupyter
-2. Select runtime mode:
-   - `fast`: ~1 hour (10 trials, good for testing)
-   - `medium`: ~3 hours (20 trials, balanced)
-   - `production`: ~10 hours (50 trials, best results)
-3. Run all cells
-4. Results are automatically saved to Google Drive or local directory
+### Requirements
 
-### Configuration Options
+```
+numpy>=1.24.0
+pandas>=2.0.0
+pandas-ta>=0.3.14b
+yfinance>=0.2.28
+pandas-datareader>=0.10.0
+gymnasium>=0.29.0
+stable-baselines3>=2.1.0
+torch>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+```
+
+### Training
+
 ```python
-# Quick configuration at the top of notebook
-MODE = 'fast'  # Change to 'medium' or 'production'
+# Run full training pipeline
+jupyter notebook SPY_SH_Trading_V3.ipynb
 
-# Data periods
-TRAIN_START = '2014-01-01'
-TRAIN_END = '2021-12-31'
-VAL_START = '2022-01-01'
-VAL_END = '2022-12-31'
-TEST_START = '2023-01-01'
-TEST_END = '2024-12-31'
+# Or run specific sections:
+# 1. Data download & feature engineering
+# 2. Walk-forward CV (5 folds × 200k steps)
+# 3. Final model training (750k steps)
+# 4. OOS backtesting (2022-2025)
+```
 
-# Risk settings
-STOP_LOSS_PCT = 0.05
-TRAILING_STOP_PCT = 0.07
-MAX_DRAWDOWN_PCT = 0.15
+### Using Trained Model
+
+```python
+from stable_baselines3 import SAC
+
+# Load model
+model = SAC.load("models/final_model.zip")
+
+# Get action for current observation
+action, _ = model.predict(observation, deterministic=True)
+# action[0] in [-1.0, 2.0]: target exposure
 ```
 
 ## 📁 Project Structure
 
 ```
-spy-ppo-trading-agent/
-├── SPY_PPO_Trading_Agent_CLEAN.ipynb  # Main notebook
-├── README.md                           # This file
-└── outputs/                            # Generated files
-    ├── ppo_spy_final.zip              # Trained model
-    ├── best_params.json               # Optimal hyperparameters
-    ├── final_results.json             # Performance metrics
-    ├── data_split.png                 # Data visualization
-    └── equity_curves.png              # Performance charts
+spy-rl-trading/
+├── SPY_SH_Trading_V3.ipynb    # Main notebook
+├── README.md
+├── requirements.txt
+├── models/
+│   ├── fold_1.zip             # CV fold models
+│   ├── fold_2.zip
+│   ├── fold_3.zip
+│   ├── fold_4.zip
+│   ├── fold_5.zip
+│   └── final_model.zip        # Production model
+├── results/
+│   ├── cv_fold_metrics.csv    # CV performance
+│   └── oos_metrics.csv        # OOS performance
+├── trades/
+│   ├── trades_2022.csv        # Daily trade logs
+│   ├── trades_2023.csv
+│   ├── trades_2024.csv
+│   └── trades_2025.csv
+└── charts/
+    ├── 1_data_overview.png
+    ├── 2_cv_results.png
+    ├── 3_oos_2022_equity.png
+    ├── 4_oos_2023_equity.png
+    ├── 5_oos_2024_equity.png
+    ├── 6_oos_2025_equity.png
+    ├── 7_oos_combined.png
+    └── 8_summary.png
 ```
 
-## 🔬 How It Works
+## 📊 Detailed Results
 
-### 1. Data Preparation
-- Downloads SPY and VIX data from Yahoo Finance
-- Engineers 6 advanced market features
-- Splits into train/validation/test sets
+### Cross-Validation Performance
 
-### 2. Environment Creation
-- Custom Gymnasium environment simulates trading
-- Implements realistic transaction costs
-- Enforces risk management rules automatically
+| Fold | Period | Return | Sharpe | Max DD |
+|------|--------|--------|--------|--------|
+| 1 | 2017-2018 | +15.6% | 1.01 | 8.2% |
+| 2 | 2019-2020 | +20.6% | 1.04 | 12.1% |
+| 3 | 2019-2020 | +18.7% | 0.95 | 11.8% |
+| 4 | 2021 | +24.7% | 2.48 | 5.1% |
+| 5 | 2021 | +23.0% | 2.28 | 5.3% |
+| **Avg** | — | **+20.5%** | **1.55** | **8.5%** |
 
-### 3. Hyperparameter Optimization
-- Optuna searches for optimal hyperparameters
-- Optimizes on 2022 bear market (validation set)
-- Maximizes Sortino Ratio with constraints
+### Risk Metrics Comparison
 
-### 4. Training
-- PPO agent learns from 2014-2021 data
-- Neural network: 256→128→64 architecture (default)
-- ~200k timesteps for final model
+| Metric | Agent | Buy & Hold |
+|--------|-------|------------|
+| Total Return (4yr) | +25.5% | +51.5% |
+| Max Drawdown | 14.1% | ~25% |
+| Sharpe (Bull Markets) | 1.74 | ~1.0 |
+| Win Rate | 54% | 53% |
+| Profit Factor | 1.12 | 1.08 |
 
-### 5. Evaluation
-- Tests on unseen 2023-2024 data
-- Compares against buy-and-hold baseline
-- Calculates comprehensive performance metrics
+## 🧠 Key Learnings
 
-## 📈 Understanding the Results
+### What Works
+- ✅ VIX-based position sizing (reduced DD by 30%)
+- ✅ Walk-forward CV (prevents overfitting)
+- ✅ Differential Sharpe Ratio reward (stable training)
+- ✅ Multi-layer risk management (defense in depth)
 
-### Why Underperformance in Bull Markets?
-The agent was optimized on the 2022 bear market, teaching it to be **defensive**:
-- Quickly exits positions when risk increases
-- Maintains larger cash positions for safety
-- Prioritizes capital preservation over maximum gains
+### What Doesn't Work
+- ❌ Complex reward functions with many bonuses/penalties
+- ❌ Aggressive hyperparameter tuning (overfits to CV)
+- ❌ Removing hard risk constraints (agent blows up)
+- ❌ LSTM/Transformer policies (harder to train, no improvement)
 
-This is a **feature, not a bug**—ideal for risk-averse investors.
+### Trade-offs
+- 📉 Bear market protection costs ~10%/year in bull markets
+- 📈 Sharpe 1.7+ comes from volatility reduction, not alpha
+- ⚖️ Strategy is defensive by design — not for maximum returns
 
-### Risk-Adjusted Performance
-Despite lower absolute returns in bull markets, the agent shows strong risk-adjusted performance:
-- Higher Sharpe and Sortino ratios than many active strategies
-- Significantly lower drawdowns (5-6% vs 15-20% for B&H)
-- More consistent returns across market conditions
+## 🔮 Future Improvements
 
-## 🛠️ Customization Ideas
-
-### Modify Trading Strategy
-```python
-# More aggressive position sizing
-MAX_POSITION_PCT = 0.80  # From 0.50
-
-# Tighter risk controls
-STOP_LOSS_PCT = 0.03  # From 0.05
-
-# Different optimization target
-# In objective function, change:
-return metrics['sharpe']  # Instead of sortino
-```
-
-
-
-## 📊 Visualizations
-
-The notebook generates:
-- **Data Split Chart**: Shows train/validation/test periods on price chart
-- **Equity Curves**: Agent vs. Buy & Hold performance over time
-- **Trade Analysis**: Entry/exit points and profitability
+1. **Multi-Asset Expansion:** Add sector ETFs, bonds, commodities
+2. **Regime Detection:** HMM or ML-based market state classification
+3. **Ensemble Methods:** Train multiple seeds, ensemble predictions
+4. **Live Paper Trading:** 6-month forward validation before real capital
+5. **Transaction Cost Modeling:** More realistic slippage estimation
 
 ## ⚠️ Disclaimer
 
-**This project is for educational purposes only. Not financial advice.**
+This project is for **educational and research purposes only**. It is not financial advice. Past performance does not guarantee future results. Always consult a qualified financial advisor before making investment decisions.
 
-- Past performance does not guarantee future results
-- Trading involves significant risk of loss
-- The model may not perform well in all market conditions
-- Always do your own research and consult financial advisors
-
-
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-##  Acknowledgments
-
-- **Stable-Baselines3**: Clean RL implementations
-- **Optuna**: Hyperparameter optimization framework
-- **yfinance**: Free market data access
-- **Gymnasium**: RL environment standard
+**Key Risks:**
+- Model may not generalize to future market regimes
+- Backtest results include survivorship bias (SPY/SH exist throughout)
+- Transaction costs and slippage may be underestimated
+- Strategy has not been validated with real capital
 
 ## 📚 References
 
-- [Proximal Policy Optimization](https://arxiv.org/abs/1707.06347) (Schulman et al., 2017)
-- [Stable-Baselines3 Documentation](https://stable-baselines3.readthedocs.io/)
-- [Gymnasium Documentation](https://gymnasium.farama.org/)
+1. Moody, J., & Saffell, M. (2001). Learning to trade via direct reinforcement. *IEEE Transactions on Neural Networks*.
+2. López de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley.
+3. Haarnoja, T., et al. (2018). Soft Actor-Critic: Off-Policy Maximum Entropy Deep RL. *ICML*.
 
+## 📄 License
 
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🤝 Contributing
+
+Contributions welcome! Please open an issue or PR for:
+- Bug fixes
+- Documentation improvements
+- New features (with tests)
+
+---
+
+<p align="center">
+  <b>Built with 🧠 PyTorch + 🎮 Stable-Baselines3 + 📊 pandas-ta</b>
+</p>
