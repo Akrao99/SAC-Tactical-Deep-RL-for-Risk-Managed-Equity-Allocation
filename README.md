@@ -132,13 +132,7 @@ Final:  Train [2010-2021] → OOS Test [2022-2025]
 
 ## 🚀 Quick Start
 
-### Installation
 
-```bash
-git clone https://github.com/yourusername/spy-rl-trading.git
-cd spy-rl-trading
-pip install -r requirements.txt
-```
 
 ### Requirements
 
@@ -249,7 +243,7 @@ spy-rl-trading/
 - ❌ Complex reward functions with many bonuses/penalties
 - ❌ Aggressive hyperparameter tuning (overfits to CV)
 - ❌ Removing hard risk constraints (agent blows up)
-- ❌ LSTM/Transformer policies (harder to train, no improvement)
+
 
 ### Trade-offs
 - 📉 Bear market protection costs ~10%/year in bull markets
@@ -284,12 +278,7 @@ This project is for **educational and research purposes only**. It is not financ
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## 🤝 Contributing
 
-Contributions welcome! Please open an issue or PR for:
-- Bug fixes
-- Documentation improvements
-- New features (with tests)
 
 ---
 
