@@ -83,7 +83,7 @@ A risk-managed equity trading system using Soft Actor-Critic (SAC) reinforcement
 
 ### Reward Function: Differential Sharpe Ratio
 
-Based on [Moody & Saffell (2001)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=268935), provides smooth gradient signal:
+Based on [Moody & Saffell (2001)]([https://papers.ssrn.com/sol3/papers.cfm?abstract_id=268935](https://proceedings.neurips.cc/paper_files/paper/1998/file/4e6cd95227cb0c280e99a195be5f6615-Paper.pdf), provides smooth gradient signal:
 
 ```python
 def _compute_reward(self, daily_ret):
